@@ -1,0 +1,35 @@
+server:
+  port: 3000
+  forward-headers-strategy: native
+  servlet:
+    session:
+      timeout: 180
+
+application:
+  proxying:
+    header-name: LOGGED-IN-USER
+    host: 127.0.0.1
+    port: 4000
+    scheme: http
+
+logging:
+  pattern:
+    console: '%clr(%d{HH:mm:ss.SSS}){faint} %clr(${LOG_LEVEL_PATTERN:-%5p}) %clr(${PID:- }){magenta} %clr(---){faint} %clr([%10.10t]){faint} %clr(%-40.40logger{39}):%clr(%4line){cyan}%clr(:){faint} %m%n'
+  level:
+    root: INFO
+
+spring:
+  profiles:
+    active: dev
+  application:
+    name: proxyz
+  security:
+    oauth2:
+      client:
+        registration:
+          portal:
+            client-id: client-id
+            client-secret: client-secret
+        provider:
+          portal:
+            issuer-uri: http://portal.on.mars
