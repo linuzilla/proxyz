@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.util.MimeType;
@@ -35,9 +36,11 @@ public class WebGatewayServiceImpl implements WebGatewayService {
 
     private final WebClient webClient;
     private final ProxyingProperties proxyingProperties;
+    private final UserIdConverterService userIdConverterService;
 
-    public WebGatewayServiceImpl(ProxyingProperties proxyingProperties) {
+    public WebGatewayServiceImpl(ProxyingProperties proxyingProperties, UserIdConverterService userIdConverterService) {
         this.proxyingProperties = proxyingProperties;
+        this.userIdConverterService = userIdConverterService;
         this.webClient = WebClient.builder()
                 .exchangeStrategies(ExchangeStrategies.builder()
                         .codecs(configurer -> configurer.defaultCodecs().maxInMemorySize(20 * 1024 * 1024)).build())
@@ -47,7 +50,7 @@ public class WebGatewayServiceImpl implements WebGatewayService {
     private String manipulatePage(DataBuffer dataBuffer) {
         final var pageContext = new AtomicReference<>(dataBuffer.toString(StandardCharsets.UTF_8));
 
-        logger.debug(">>> Data: {}", pageContext.get().substring(0, Math.min(pageContext.get().length(), 20)));
+        logger.trace(">>> Data: {}", pageContext.get().substring(0, Math.min(pageContext.get().length(), 20)));
         return pageContext.get();
     }
 
@@ -62,24 +65,33 @@ public class WebGatewayServiceImpl implements WebGatewayService {
 
     @Override
     public Mono<ServerResponse> proxying(ServerRequest serverRequest) {
-        logger.debug("method: {}", serverRequest.method());
+        logger.trace("method: {}", serverRequest.method());
 
         return serverRequest.session()
                 .flatMap(webSession -> serverRequest.principal()
                         .flatMap(principal -> {
-                            logger.debug("username: {}, principal: {}", principal.getName(), principal.getClass().getName());
+                            final var mappedUserId = userIdConverterService.convert(principal);
+
+                            if (!StringUtils.hasLength(mappedUserId)) {
+                                logger.warn("mapping failed for {}", principal.getName());
+                                return webSession.invalidate()
+                                        .flatMap(v -> ServerResponse.status(HttpStatus.FOUND)
+                                                .header(HttpHeaders.LOCATION, proxyingProperties.getLocationOnFail())
+                                                .build());
+                            } else {
+                                logger.info("mapping user: {} to {}", principal.getName(), mappedUserId);
+                            }
 
                             final var cookieStrings = new ArrayList<List<String>>();
 
                             final var requestBodySpec = this.webClient
                                     .method(Objects.requireNonNullElse(serverRequest.method(), HttpMethod.GET))
                                     .uri(shibbolethUri(serverRequest))
-                                    .headers(httpHeaders -> sendingHeaderManipulate(serverRequest, httpHeaders, principal));
+                                    .headers(httpHeaders -> sendingHeaderManipulate(serverRequest, httpHeaders, mappedUserId));
 
                             final var cookieString = CookieHelper.filterCookie(cookieStrings, strings -> CookieHelper.cookieNameFilter(strings[0]));
 
                             if (StringUtils.hasText(cookieString)) {
-//                                logger.debug("Cookie String: {}", cookieString);
                                 requestBodySpec.header(HttpHeaders.COOKIE, cookieString);
                             }
 
@@ -97,14 +109,16 @@ public class WebGatewayServiceImpl implements WebGatewayService {
                         }));
     }
 
-    private void sendingHeaderManipulate(ServerRequest request, HttpHeaders httpHeaders, Principal principal) {
+    private void sendingHeaderManipulate(ServerRequest request, HttpHeaders httpHeaders, String mappedUserId) {
         request.headers().asHttpHeaders()
                 .forEach((headerName, headerValues) -> {
                     if (!proxyingProperties.getHeaderName().equalsIgnoreCase(headerName)) {
                         httpHeaders.put(headerName, headerValues);
                     }
                 });
-        httpHeaders.put(proxyingProperties.getHeaderName(), List.of(principal.getName()));
+        if (StringUtils.hasLength(mappedUserId)) {
+            httpHeaders.put(proxyingProperties.getHeaderName(), List.of(mappedUserId));
+        }
     }
 
     private void receivedHeaderManipulate(ClientResponse clientResponse, HttpHeaders httpHeaders) {

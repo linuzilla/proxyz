@@ -11,6 +11,8 @@ application:
     host: 127.0.0.1
     port: 4000
     scheme: http
+    special-userid-mapping: false
+    location-on-failed: /some-where
 
 logging:
   pattern:
@@ -30,6 +32,7 @@ spring:
           portal:
             client-id: client-id
             client-secret: client-secret
+            scope: identifier,alternated-id
         provider:
           portal:
-            issuer-uri: http://portal.on.mars
+            issuer-uri: https://portal.ncu.edu.tw

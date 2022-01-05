@@ -8,6 +8,8 @@ public class ProxyingProperties {
     private String host;
     private Integer port;
     private String scheme;
+    private String locationOnFail;
+    private Boolean specialUseridMapping;
 
     public String getHeaderName() {
         return headerName;
@@ -39,5 +41,21 @@ public class ProxyingProperties {
 
     public void setScheme(String scheme) {
         this.scheme = scheme;
+    }
+
+    public String getLocationOnFail() {
+        return locationOnFail;
+    }
+
+    public void setLocationOnFail(String locationOnFail) {
+        this.locationOnFail = locationOnFail;
+    }
+
+    public Boolean getSpecialUseridMapping() {
+        return specialUseridMapping;
+    }
+
+    public void setSpecialUseridMapping(Boolean specialUseridMapping) {
+        this.specialUseridMapping = specialUseridMapping;
     }
 }
